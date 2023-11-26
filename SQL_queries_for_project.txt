@@ -1,0 +1,241 @@
+Flight Availability
+===================
+
+SET @destination = 'Greece' COLLATE utf8mb4_general_ci;
+SET @selected_date = '2023-05-01' COLLATE utf8mb4_general_ci;
+SET @departure_airport ='London Stansted' COLLATE utf8mb4_general_ci;
+
+SELECT flight_id,flight_route_name, @departureTime:=DATE(flight_departure_date_time) AS departure_date FROM flight 
+INNER JOIN flight_route ON flight_route.flight_route_id = flight.flight_route_id
+INNER JOIN airport ON flight_route.depart_airport_id = airport.airport_id
+INNER JOIN city_airport ON airport.airport_id = city_airport.airport_id
+INNER JOIN city ON city_airport.city_id = city.city_id
+INNER JOIN country ON city.country_id = country.country_id
+WHERE airport.airport_name = @departure_airport AND DATE(flight_departure_date_time) = @selected_date; 
+
+SELECT @departureTime AS inward_flight_date, flight_id,flight_route_name, DATE(flight_departure_date_time) AS outward_flight_date, DATEDIFF(DATE(flight_departure_date_time), @departureTime) as durationNight FROM flight 
+INNER JOIN flight_route ON flight_route.flight_route_id = flight.flight_route_id
+INNER JOIN airport ON flight_route.depart_airport_id = airport.airport_id
+INNER JOIN city_airport ON airport.airport_id = city_airport.airport_id
+INNER JOIN city ON city_airport.city_id = city.city_id
+INNER JOIN country ON city.country_id = country.country_id
+WHERE country.country_name=  @destination; 
+
+
+Room Availability
+=================
+START TRANSACTION;
+
+SET @hotelname = 'Eagles Villas' COLLATE utf8mb4_general_ci;
+SET @selected_date = '2023-05-01' COLLATE utf8mb4_general_ci;
+SET @nights = '4' COLLATE utf8mb4_general_ci;
+SET @guests = '4' COLLATE utf8mb4_general_ci;
+
+SELECT  @checkout_date:=DATE_ADD(@selected_date, interval @nights day) AS DateAdd;
+
+SELECT room_type,room_facilities,image_name,image_path AS image,note,max_person,min_person,room_price,hotel_name FROM hotel
+INNER JOIN hotel_room ON hotel.hotel_id = hotel_room.hotel_id
+INNER JOIN room_type ON hotel_room.room_type_id = room_type.room_type_id
+INNER JOIN room_price ON hotel_room.hotel_room_id = room_price.hotel_room_id
+INNER JOIN hotel_room_facility ON hotel_room.hotel_room_id = hotel_room_facility.hotel_room_id
+INNER JOIN room_facility ON hotel_room_facility.room_facility_type_id = room_facility.room_facility_id
+INNER JOIN image ON hotel_room.hotel_room_id = image.hotel_room_id
+WHERE hotel.hotel_name = @hotelname AND room_price.valid_date_from <= @selected_date AND room_price.valid_date_to >=@selected_date
+AND hotel_room.max_person >= @guests AND hotel_room.min_person <= @guests;
+
+
+-- number of Deluxe room in the hotel
+SELECT hotel_name,room_type,@total_room1:=COUNT(room_status) AS available_rooms FROM hotel
+INNER JOIN hotel_room ON hotel.hotel_id = hotel_room.hotel_id
+INNER JOIN room_type ON hotel_room.room_type_id = room_type.room_type_id
+WHERE hotel.hotel_name = @hotelname AND room_type = 'Deluxe room';
+
+-- available room of Deluxe room
+SELECT @total_room1-count(booking_ref) as room_available, room_type,hotel_name FROM booking
+INNER JOIN booked_room ON booking.booking_id = booked_room.booking_id
+INNER JOIN hotel_room ON booked_room.hotel_room_id = hotel_room.hotel_room_id
+INNER JOIN room_type ON hotel_room.room_type_id = room_type.room_type_id
+INNER JOIN hotel ON hotel_room.hotel_id = hotel.hotel_id
+WHERE (date(checkin_date) BETWEEN @selected_date AND @checkout_date) AND (date(checkout_date) BETWEEN  @selected_date AND @checkout_date);
+
+
+-- number of Suites room in the hotel
+SELECT hotel_name,room_type,@total_room:=COUNT(room_status) AS available_rooms FROM hotel
+INNER JOIN hotel_room ON hotel.hotel_id = hotel_room.hotel_id
+INNER JOIN room_type ON hotel_room.room_type_id = room_type.room_type_id
+WHERE hotel.hotel_name = @hotelname AND room_type = 'Suites room';
+
+-- available room of Suites room
+SELECT @total_room-count(booking_ref) as room_available, room_type,hotel_name FROM booking
+INNER JOIN booked_room ON booking.booking_id = booked_room.booking_id
+INNER JOIN hotel_room ON booked_room.hotel_room_id = hotel_room.hotel_room_id
+INNER JOIN room_type ON hotel_room.room_type_id = room_type.room_type_id
+INNER JOIN hotel ON hotel_room.hotel_id = hotel.hotel_id
+WHERE (date(checkin_date) BETWEEN @selected_date AND @checkout_date) AND (date(checkout_date) BETWEEN  @selected_date AND @checkout_date);
+
+COMMIT;
+
+
+Insertion of a booking record for selected room
+===============================================
+-- booking 
+INSERT INTO `booking` (`booking_id`, `booking_ref`, `booking_made_date`, `total_cost`, `passenger_address_id`, `passenger_contact_id`, `inward_flight_id`, `outward_flight_id`) VALUES (NULL, 'JET 004', '2022-11-27', '0', NULL, NULL, '3', '5');
+
+-- booked_room
+INSERT INTO `booked_room` (`booked_room_id`, `checkin_date`, `checkout_date`,`hotel_board_basis_info_id`, `hotel_room_id`, `booking_id`) VALUES (NULL, '2023-05-01 19:15:47', '2023-05-05 19:15:47','1', '5', '11');
+
+-- room status changed to occupied
+UPDATE `hotel_room` SET `room_status` = '1' WHERE `hotel_room`.`hotel_room_id` = '5';
+
+PASSENGER DETAILS
+=================
+-- passenger
+INSERT INTO `passenger` (`passenger_id`, `passenger_first_name`, `passenger_last_name`, `passenger_dob`, `lead_passenger`, `passenger_title_id`, `passenger_category_id`, `booking_id`) VALUES (NULL, 'Zack', 'Tonny', '1987-04-30', '1', '1', '1', '11'), (NULL, 'Christy', 'Tonny', '1993-07-08', '0', '2', '1', '11'),(NULL, 'Nick', 'Tonny', '2015-05-19', '0', '4', '2', '11'),(NULL, 'Anne', 'Tonny', '2021-04-04', '0', '3', '3', '11');
+
+-- carer_infant
+
+INSERT INTO `infant_carer` (`infant_carer_id`, `infant_id`, `carer_id`) VALUES (NULL, '37', '39');
+
+PASSENGER INFO
+==============
+SET @bookingid = '11' COLLATE utf8mb4_general_ci;
+-- address 
+INSERT INTO `address` ( `address_id`, `address_line_1`, `address_line_2`, `Postcode`, `city_id`) VALUES (NULL, '116, Donegall Ave', 'Lisburn Road', 'BT12 6LX', '1');
+
+UPDATE `booking` SET `passenger_address_id` = '21' WHERE booking.booking_id = @bookingid;
+
+-- contact info
+INSERT INTO `contact_info` (`contact_id`, `email_address`, `country_code`, `telephone_number`, `emergency_number`, `telephone_number_type_id`) VALUES (NULL, 'gowkoki@gmail.com', '44', '7536232', '7802462', '1');
+
+UPDATE `booking` SET `passenger_contact_id` = '20' WHERE booking.booking_id = @bookingid;
+
+TOTAL COST calculation
+=======================
+START TRANSACTION;
+SET @nights = '4' COLLATE utf8mb4_general_ci;
+SET @selected_date = '2023-05-01' COLLATE utf8mb4_general_ci;
+SET @bookingid = '11' COLLATE utf8mb4_general_ci;
+SET @guests = '4' COLLATE utf8mb4_general_ci;
+
+
+-- calculate how many adults in a booking
+SELECT @no_of_adult := COUNT(passenger_category) FROM booking
+INNER JOIN passenger ON booking.booking_id = passenger.booking_id
+INNER JOIN passenger_category ON passenger.passenger_category_id = passenger_category.passenger_category_id
+WHERE booking.booking_id = @bookingid AND passenger_category.passenger_category = 'Adult';
+-- calculate how many child in a booking
+SELECT @no_of_child := COUNT(passenger_category) FROM booking
+INNER JOIN passenger ON booking.booking_id = passenger.booking_id
+INNER JOIN passenger_category ON passenger.passenger_category_id = passenger_category.passenger_category_id
+WHERE booking.booking_id = @bookingid AND passenger_category.passenger_category = 'Child';
+-- calculate how many infant in a booking
+SELECT @no_of_infant := COUNT(passenger_category) FROM booking
+INNER JOIN passenger ON booking.booking_id = passenger.booking_id
+INNER JOIN passenger_category ON passenger.passenger_category_id = passenger_category.passenger_category_id
+WHERE booking.booking_id = @bookingid AND passenger_category.passenger_category = 'Infant';
+
+
+-- board 
+SELECT @total:= (board_basis_price *@guests) * @nights AS Total_Board_price from booking
+INNER JOIN booked_room ON booking.booking_id = booked_room.booking_id
+INNER JOIN hotel_board_basis_info ON booked_room.hotel_board_basis_info_id = hotel_board_basis_info.hotel_board_basis_info_id
+WHERE booking.booking_id = @bookingid;
+
+-- room
+SELECT  @total1:= (room_price * @nights) As Total_room_price from booking
+INNER JOIN booked_room ON booking.booking_id = booked_room.booking_id
+INNER JOIN hotel_room ON hotel_room.hotel_room_id = booked_room.hotel_room_id
+INNER JOIN room_price ON hotel_room.hotel_room_id = room_price.hotel_room_id
+WHERE booking.booking_id = @bookingid AND room_price.valid_date_from <= @selected_date AND room_price.valid_date_to >=@selected_date;
+
+SELECT @sumofboardroom := @total +@total1;
+
+-- inward flight fare for Adult
+SELECT @total2:=(passenger_flight_fare *  @no_of_adult)  FROM booking 
+INNER JOIN flight ON booking.inward_flight_id = flight.flight_id
+INNER JOIN flight_fare ON flight.flight_id = flight_fare.flight_id
+INNER JOIN passenger_category ON flight_fare.passenger_category_id = passenger_category.passenger_category_id
+WHERE booking.booking_id = @bookingid AND flight_fare.fare_valid_from_date <= @selected_date AND flight_fare.fare_valid_to_date >=@selected_date
+AND passenger_category ='Adult';
+-- inward flight fare for child
+SELECT @total3:=(passenger_flight_fare *  @no_of_child)+@total2 FROM booking 
+INNER JOIN flight ON booking.inward_flight_id = flight.flight_id
+INNER JOIN flight_fare ON flight.flight_id = flight_fare.flight_id
+INNER JOIN passenger_category ON flight_fare.passenger_category_id = passenger_category.passenger_category_id
+WHERE booking.booking_id = @bookingid AND flight_fare.fare_valid_from_date <= @selected_date AND flight_fare.fare_valid_to_date >=@selected_date
+AND passenger_category ='Child';
+-- inward flight fare for infant
+SELECT @total4:=(passenger_flight_fare *  @no_of_infant)+@total3 FROM booking 
+INNER JOIN flight ON booking.inward_flight_id = flight.flight_id
+INNER JOIN flight_fare ON flight.flight_id = flight_fare.flight_id
+INNER JOIN passenger_category ON flight_fare.passenger_category_id = passenger_category.passenger_category_id
+WHERE booking.booking_id = @bookingid AND flight_fare.fare_valid_from_date <= @selected_date AND flight_fare.fare_valid_to_date >=@selected_date
+AND passenger_category ='Infant';
+
+
+
+-- outward flight fare for Adult
+SELECT @total5:=(passenger_flight_fare *  @no_of_adult)+ @total4 FROM booking 
+INNER JOIN flight ON booking.outward_flight_id = flight.flight_id
+INNER JOIN flight_fare ON flight.flight_id = flight_fare.flight_id
+INNER JOIN passenger_category ON flight_fare.passenger_category_id = passenger_category.passenger_category_id
+WHERE booking.booking_id = @bookingid AND flight_fare.fare_valid_from_date <= @selected_date AND flight_fare.fare_valid_to_date >=@selected_date
+AND passenger_category ='Adult';
+-- outward flight fare for child
+SELECT @total6:=(passenger_flight_fare *  @no_of_child)+@total5 FROM booking 
+INNER JOIN flight ON booking.outward_flight_id = flight.flight_id
+INNER JOIN flight_fare ON flight.flight_id = flight_fare.flight_id
+INNER JOIN passenger_category ON flight_fare.passenger_category_id = passenger_category.passenger_category_id
+WHERE booking.booking_id = @bookingid AND flight_fare.fare_valid_from_date <= @selected_date AND flight_fare.fare_valid_to_date >=@selected_date
+AND passenger_category ='Child';
+-- outward flight fare for infant
+SELECT @total7:=(passenger_flight_fare *  @no_of_infant)+@total6 AS Total_flight_price  FROM booking 
+INNER JOIN flight ON booking.outward_flight_id = flight.flight_id
+INNER JOIN flight_fare ON flight.flight_id = flight_fare.flight_id
+INNER JOIN passenger_category ON flight_fare.passenger_category_id = passenger_category.passenger_category_id
+WHERE booking.booking_id = @bookingid AND flight_fare.fare_valid_from_date <= @selected_date AND flight_fare.fare_valid_to_date >=@selected_date
+AND passenger_category ='Infant';
+
+SELECT @totalholidayprice := @sumofboardroom +  @total7 AS Total_cost_for_holiday_package;
+
+UPDATE `booking` SET `total_cost` = @total7 WHERE booking.booking_id = @bookingid;
+COMMIT;
+
+
+
+
+
+PASSENGER PAYMENT INFO
+======================
+INSERT INTO `passenger_payment` ( `passenger_payment_id`, `paid_amount`, `date`, `payment_type_id`, `booking_id`) VALUES (NULL, '900', '2022-11-27', '2', '11');
+
+-- passenger_card_details
+
+START TRANSACTION;
+SET @cardholdername = 'Zack Tonny';
+SET @cardnumber = '1234 0987 1234'; 
+SET @expiraymonthyear= '05/2025';
+SET @cvvnumber = '493';
+SET @cardType = '1';
+SET @bookingid = '11';
+
+SET @secretPasssword = 'dataBase';
+
+SET @cardholdername = AES_ENCRYPT(@cardholdername,@secretPasssword);
+SET @cardnumber = AES_ENCRYPT(@cardnumber,@secretPasssword);
+SET @expiraymonthyear = AES_ENCRYPT(@expiraymonthyear,@secretPasssword);
+SET @cvvnumber = AES_ENCRYPT(@cvvnumber,@secretPasssword);
+
+-- encryption
+INSERT INTO `passenger_card_details` (`passenger_card_details_id`, `card_number`, `name_on_card`, `expiry_date`, `cvv_number`, `payment_card_type_id`, `booking_id`) VALUES (NULL,  @cardnumber, @cardholdername, @expiraymonthyear, @cvvnumber, @cardType, @bookingid);
+
+ROLLBACK;
+==================================
+
+SET @secretPasssword = 'dataBase';
+
+-- decryption 
+SELECT passenger_card_details_id, AES_DECRYPT(card_number, @secretPasssword),AES_DECRYPT(name_on_card, @secretPasssword), AES_DECRYPT(expiry_date, @secretPasssword), AES_DECRYPT(cvv_number,@secretPasssword), payment_card_type_id,booking_id
+FROM passenger_card_details WHERE passenger_card_details_id = '17';
+
+
